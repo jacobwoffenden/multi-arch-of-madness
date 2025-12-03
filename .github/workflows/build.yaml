@@ -1,0 +1,45 @@
+---
+name: Build
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build
+    permissions:
+      contents: read
+    strategy:
+      fast-fail: falsef
+      matrix:
+        - platform: amd64
+          runner: ubuntu-latest
+        - platform: arm64
+          runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Harden Runner
+        if: github.event.repository.private == false
+        id: harden_runner
+        uses: step-security/harden-runner@df199fb7be9f65074067a9eb93f12bb4c5547cf2 # v2.13.3
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: Containerfile.${{ matrix.platform }}
+          push: false
+          tags: ${{ github.sha }}-${{ matrix.platform }}
