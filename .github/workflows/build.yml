@@ -46,7 +46,6 @@ jobs:
           file: Containerfile
           push: false
           tags: ${{ github.sha }}-${{ matrix.platform }}
-          platform: linux/${{ matrix.platform }}
 
       - name: Test
         id: test
