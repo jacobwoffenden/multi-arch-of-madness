@@ -144,11 +144,13 @@ jobs:
         id: create_manifest
         shell: bash
         run: |
-          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}")
-          docker buildx imagetools create ${tags} $(printf "${IMAGE_NAME}@sha256:%s " $(ls /tmp/digests/))
+          mapfile -t tags < <(jq -cr '.tags[]' <<< "${DOCKER_METADATA_OUTPUT_JSON}")
+          mapfile -t digests < <(printf "${IMAGE_NAME}@sha256:%s\n" *)
+          docker buildx imagetools create "${tags[@]/#/-t }" "${digests[@]}"
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+        working-directory: /tmp/digests
 
       - name: Inspect Image
         shell: bash
