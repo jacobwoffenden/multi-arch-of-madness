@@ -54,7 +54,7 @@ git push origin 0.0.1-rc1
 
 - **Prereleases** (tags with `-rc`, `-alpha`, `-beta`, etc.) are tagged with the version only
 - **Stable releases** (e.g., `1.0.0`) automatically get the `latest` tag in addition to version tags
-- The `docker/metadata-action` automatically detects semver prerelease identifiers and only applies `latest` to stable releases
+- The `docker/metadata-action` automatically detects SemVer prerelease identifiers and only applies `latest` to stable releases
 
 ### Jobs
 
