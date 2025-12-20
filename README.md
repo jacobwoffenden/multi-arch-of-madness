@@ -1,5 +1,7 @@
 # multi-arch-of-madness
 
+_:copilot: This documentation was created by GitHub Copilot_
+
 > **A practical example of building and releasing multi-architecture container images with GitHub Actions**
 
 This repository demonstrates how to build, test, and release multi-architecture (amd64 and arm64) container images using GitHub Actions with native attestation support.
@@ -52,7 +54,7 @@ git push origin 0.0.1-rc1
 
 - **Prereleases** (tags with `-rc`, `-alpha`, `-beta`, etc.) are tagged with the version only
 - **Stable releases** (e.g., `1.0.0`) automatically get the `latest` tag in addition to version tags
-- The `docker/metadata-action` uses `latest=auto` to intelligently apply the `latest` tag only to stable releases
+- The `docker/metadata-action` automatically detects semver prerelease identifiers and only applies `latest` to stable releases
 
 ### Jobs
 
@@ -117,10 +119,10 @@ Each architecture gets its own attestation, stored as "unknown" platform entries
 
 ```bash
 # View all platforms and attestations
-docker buildx imagetools inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
+docker buildx imagetools inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
 
 # View raw manifest (includes attestations)
-docker buildx imagetools inspect --raw ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12 | jq
+docker buildx imagetools inspect --raw ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18 | jq
 ```
 
 ## 🧪 Testing
@@ -129,24 +131,24 @@ docker buildx imagetools inspect --raw ghcr.io/jacobwoffenden/multi-arch-of-madn
 
 ```bash
 # Pull multi-arch image (auto-selects your platform)
-docker pull ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
+docker pull ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
 
 # Pull specific architecture
-docker pull --platform linux/amd64 ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
-docker pull --platform linux/arm64 ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
+docker pull --platform linux/amd64 ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
+docker pull --platform linux/arm64 ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
 
 # Run the image
-docker run --rm ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
+docker run --rm ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
 ```
 
 ### Verify Architecture
 
 ```bash
 # Check which architecture was pulled
-docker inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12 | jq '.[0].Architecture'
+docker inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18 | jq '.[0].Architecture'
 
 # View all available platforms
-docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
+docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
 ```
 
 ## 📋 Key Workflow Features
@@ -171,6 +173,7 @@ docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
 - Proper permission scoping per job
 - OCI-compliant image formats
 - Comprehensive metadata (labels, annotations)
+- Shellcheck compliant shell scripts with documented exceptions
 
 ## 🔄 Workflow Files
 
