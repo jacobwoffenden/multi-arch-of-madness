@@ -145,12 +145,15 @@ jobs:
         shell: bash
         run: |
           mapfile -t tags < <(jq -cr '.tags[]' <<< "${DOCKER_METADATA_OUTPUT_JSON}")
-          mapfile -t digests < <(printf "${IMAGE_NAME}@sha256:%s\n" *)
+          mapfile -t digest_files < <(ls /tmp/digests/)
+          digests=()
+          for digest in "${digest_files[@]}"; do
+            digests+=("${IMAGE_NAME}@sha256:${digest}")
+          done
           docker buildx imagetools create "${tags[@]/#/-t }" "${digests[@]}"
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
-        working-directory: /tmp/digests
 
       - name: Inspect Image
         shell: bash
