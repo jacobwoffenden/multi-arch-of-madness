@@ -10,7 +10,7 @@ This repository demonstrates how to build, test, and release multi-architecture 
 - ✅ Matrix-based parallel builds using native runners
 - ✅ Multi-arch manifest creation and publishing
 - ✅ Native Docker/BuildKit attestations (provenance + SBOM)
-- ✅ Automated releases triggered by git tags
+- ✅ Automated releases triggered by Git tags
 
 ## 🏗️ Architecture
 
@@ -47,7 +47,7 @@ git push origin 0.0.1-rc1
 ```
 
 **Tag Handling:**
-- **Pre-releases** (tags with `-rc`, `-alpha`, `-beta`, etc.) are tagged with the version only
+- **Prereleases** (tags with `-rc`, `-alpha`, `-beta`, etc.) are tagged with the version only
 - **Stable releases** (e.g., `1.0.0`) automatically get the `latest` tag in addition to version tags
 - The `docker/metadata-action` uses `latest=auto` to intelligently apply the `latest` tag only to stable releases
 
@@ -83,7 +83,7 @@ Runs after both platform builds complete:
 
 **Steps:**
 - Download all platform digests
-- Generate image tags from git tag
+- Generate image tags from Git tag
 - Create multi-arch manifest using `docker buildx imagetools create`
 - Push manifest with proper tags
 - Inspect final multi-arch image
