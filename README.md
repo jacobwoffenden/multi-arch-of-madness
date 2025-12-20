@@ -22,6 +22,7 @@ The workflow uses a **matrix strategy** to build platform-specific images in par
 - **arm64**: Builds on `ubuntu-24.04-arm` (ARM64 native)
 
 Each platform build:
+
 1. Creates a platform-specific Docker Buildx context
 2. Builds and pushes the image by digest (not tag)
 3. Exports the digest as an artifact
@@ -29,6 +30,7 @@ Each platform build:
 ### Manifest Merge
 
 After both platform builds complete, a merge job:
+
 1. Downloads all platform digests
 2. Creates a multi-arch manifest combining both images
 3. Tags and pushes the unified manifest
@@ -47,6 +49,7 @@ git push origin 0.0.1-rc1
 ```
 
 **Tag Handling:**
+
 - **Prereleases** (tags with `-rc`, `-alpha`, `-beta`, etc.) are tagged with the version only
 - **Stable releases** (e.g., `1.0.0`) automatically get the `latest` tag in addition to version tags
 - The `docker/metadata-action` uses `latest=auto` to intelligently apply the `latest` tag only to stable releases
@@ -65,6 +68,7 @@ matrix:
 ```
 
 **Steps:**
+
 - Checkout code
 - Generate Docker metadata (labels, annotations)
 - Create platform-specific Buildx context
@@ -73,6 +77,7 @@ matrix:
 - Export and upload digest artifact
 
 **Key Configuration:**
+
 - Uses `push-by-digest=true` to push without tags initially
 - Enables OCI media types for attestations
 - Runs on native architecture runners for optimal performance
@@ -82,6 +87,7 @@ matrix:
 Runs after both platform builds complete:
 
 **Steps:**
+
 - Download all platform digests
 - Generate image tags from Git tag
 - Create multi-arch manifest using `docker buildx imagetools create`
@@ -98,7 +104,6 @@ This workflow includes **native Docker/BuildKit attestations** automatically:
   - GitHub Actions workflow that built the image
   - Exact commit SHA and build environment
   - Build parameters and configuration
-  
 - **SBOM**: Software Bill of Materials containing:
   - All packages and dependencies in the image
   - Version information
