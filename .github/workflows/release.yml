@@ -157,6 +157,8 @@ jobs:
           image: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
           format: cyclonedx-json
           output-file: sbom.cyclonedx.json
+          upload-artifact: false
+          upload-release-assets: false
 
       - name: Attest Build Provenance
         uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # v1.4.3
