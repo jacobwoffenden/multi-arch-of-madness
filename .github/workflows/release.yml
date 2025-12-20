@@ -152,7 +152,7 @@ jobs:
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}")
           digests=$(printf "${IMAGE_NAME}@sha256:%s " /tmp/digests/*)
-          docker buildx imagetools create ${tags} ${digests}
+          docker buildx imagetools create "${tags}" "${digests}"
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
