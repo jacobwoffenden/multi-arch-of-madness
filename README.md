@@ -46,6 +46,11 @@ git tag 0.0.1-rc1
 git push origin 0.0.1-rc1
 ```
 
+**Tag Handling:**
+- **Pre-releases** (tags with `-rc`, `-alpha`, `-beta`, etc.) are tagged with the version only
+- **Stable releases** (e.g., `1.0.0`) automatically get the `latest` tag in addition to version tags
+- The `docker/metadata-action` uses `latest=auto` to intelligently apply the `latest` tag only to stable releases
+
 ### Jobs
 
 #### 1. Build and Push (Matrix)
