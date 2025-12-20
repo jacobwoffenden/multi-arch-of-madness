@@ -143,14 +143,14 @@ jobs:
       - name: Create and Push Manifest
         id: create_manifest
         shell: bash
+        # We intentionally need word splitting here to expand tags and digests into separate arguments.
+        # The shellcheck warnings are suppressed because quoting would break the command by treating
+        # multiple tags/digests as single strings instead of separate CLI arguments.
         run: |
-          mapfile -t tags < <(jq -cr '.tags[]' <<< "${DOCKER_METADATA_OUTPUT_JSON}")
-          mapfile -t digest_files < <(ls /tmp/digests/)
-          digests=()
-          for digest in "${digest_files[@]}"; do
-            digests+=("${IMAGE_NAME}@sha256:${digest}")
-          done
-          docker buildx imagetools create "${tags[@]/#/-t }" "${digests[@]}"
+          # shellcheck disable=SC2046,SC2086
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}")
+          # shellcheck disable=SC2046,SC2086
+          docker buildx imagetools create ${tags} $(printf "${IMAGE_NAME}@sha256:%s " $(ls /tmp/digests/))
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
