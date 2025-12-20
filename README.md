@@ -97,7 +97,7 @@ This workflow includes **native Docker/BuildKit attestations** automatically:
 - **SBOM**: Software Bill of Materials containing:
   - All packages and dependencies in the image
   - Version information
-  - License data
+  - Licence data
 
 ### Per-Platform Attestations
 
@@ -107,10 +107,10 @@ Each architecture gets its own attestation, stored as "unknown" platform entries
 
 ```bash
 # View all platforms and attestations
-docker buildx imagetools inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11
+docker buildx imagetools inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
 
 # View raw manifest (includes attestations)
-docker buildx imagetools inspect --raw ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11 | jq
+docker buildx imagetools inspect --raw ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12 | jq
 ```
 
 ## 🧪 Testing
@@ -119,24 +119,24 @@ docker buildx imagetools inspect --raw ghcr.io/jacobwoffenden/multi-arch-of-madn
 
 ```bash
 # Pull multi-arch image (auto-selects your platform)
-docker pull ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11
+docker pull ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
 
 # Pull specific architecture
-docker pull --platform linux/amd64 ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11
-docker pull --platform linux/arm64 ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11
+docker pull --platform linux/amd64 ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
+docker pull --platform linux/arm64 ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
 
 # Run the image
-docker run --rm ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11
+docker run --rm ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
 ```
 
 ### Verify Architecture
 
 ```bash
 # Check which architecture was pulled
-docker inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11 | jq '.[0].Architecture'
+docker inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12 | jq '.[0].Architecture'
 
 # View all available platforms
-docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11
+docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc12
 ```
 
 ## 📋 Key Workflow Features
@@ -148,7 +148,7 @@ docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11
 - Minimal permissions (principle of least privilege)
 - OIDC token authentication for registry login
 
-### Optimization
+### Optimisation
 
 - Parallel matrix builds for faster execution
 - Native architecture runners (no emulation overhead)
@@ -178,6 +178,6 @@ docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc11
 
 This is an example repository for learning purposes. Feel free to use it as a template for your own multi-arch builds!
 
-## 📄 License
+## 📄 Licence
 
 MIT
