@@ -96,7 +96,9 @@ jobs:
     name: Create Multi-Arch Manifest
     needs: build-and-push
     permissions:
+      attestations: write
       contents: read
+      id-token: write
       packages: write
     runs-on: ubuntu-latest
     steps:
@@ -130,11 +132,16 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create and Push Manifest
+        id: create_manifest
         shell: bash
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.IMAGE_NAME }}@sha256:%s ' $(ls /tmp/digests/))
+          
+          # Get the digest of the multi-arch manifest
+          digest=$(docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} --format '{{.Manifest.Digest}}')
+          echo "digest=${digest}" >> $GITHUB_OUTPUT
         env:
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
 
@@ -142,3 +149,18 @@ jobs:
         shell: bash
         run: |
           docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # v1.4.3
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.create_manifest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6 # v1.4.1
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.create_manifest.outputs.digest }}
+          sbom-path: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          push-to-registry: true
