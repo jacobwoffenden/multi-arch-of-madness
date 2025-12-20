@@ -140,7 +140,7 @@ jobs:
             $(printf '${{ env.IMAGE_NAME }}@sha256:%s ' $(ls /tmp/digests/))
           
           # Get the digest of the multi-arch manifest
-          digest=$(docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} --format '{{.Manifest.Digest}}')
+          digest=$(docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} --format '{{json .}}' | jq -r '.manifest.digest')
           echo "digest=${digest}" >> $GITHUB_OUTPUT
         env:
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
