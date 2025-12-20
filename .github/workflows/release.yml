@@ -152,7 +152,7 @@ jobs:
 
       - name: Generate SBOM
         id: generate_sbom
-        uses: anchore/sbom-action@fc46e51fd0cb65c9634a0c7c39e73a3eeb5507b7 # v0.18.6
+        uses: anchore/sbom-action@43a17d6e7add2b5535efe4dcae9952337c479a93 # v0.20.11
         with:
           image: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
           format: cyclonedx-json
