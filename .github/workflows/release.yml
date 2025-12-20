@@ -29,7 +29,7 @@ jobs:
       - name: Harden Runner
         if: github.event.repository.private == false
         id: harden_runner
-        uses: step-security/harden-runner@df199fb7be9f65074067a9eb93f12bb4c5547cf2 # v2.13.3
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
         with:
           egress-policy: audit
 
@@ -54,7 +54,7 @@ jobs:
           docker context create "${CONTEXT}"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         with:
           endpoint: ${{ matrix.platform }}
           platforms: linux/${{ matrix.platform }}
@@ -85,7 +85,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload Digest
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: digests-${{ matrix.platform }}
           path: /tmp/digests/*
@@ -96,7 +96,6 @@ jobs:
     name: Create Multi-Arch Manifest
     needs: build-and-push
     permissions:
-      attestations: write
       contents: read
       id-token: write
       packages: write
@@ -109,7 +108,7 @@ jobs:
           egress-policy: audit
 
       - name: Download Digests
-        uses: actions/download-artifact@b14cf4c92620c250e1c074ab0a5800e37df86765 # v4.2.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           path: /tmp/digests
           pattern: digests-*
@@ -122,7 +121,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
@@ -138,10 +137,6 @@ jobs:
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.IMAGE_NAME }}@sha256:%s ' $(ls /tmp/digests/))
-          
-          # Get the digest of the multi-arch manifest
-          digest=$(docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} --format '{{json .}}' | jq -r '.manifest.digest')
-          echo "digest=${digest}" >> $GITHUB_OUTPUT
         env:
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
 
@@ -149,28 +144,3 @@ jobs:
         shell: bash
         run: |
           docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-
-      - name: Generate SBOM
-        id: generate_sbom
-        uses: anchore/sbom-action@43a17d6e7add2b5535efe4dcae9952337c479a93 # v0.20.11
-        with:
-          image: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-          format: cyclonedx-json
-          output-file: sbom.cyclonedx.json
-          upload-artifact: false
-          upload-release-assets: false
-
-      - name: Attest Build Provenance
-        uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # v1.4.3
-        with:
-          subject-name: ${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.create_manifest.outputs.digest }}
-          push-to-registry: true
-
-      - name: Attest SBOM
-        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6 # v1.4.1
-        with:
-          subject-name: ${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.create_manifest.outputs.digest }}
-          sbom-path: sbom.cyclonedx.json
-          push-to-registry: true
