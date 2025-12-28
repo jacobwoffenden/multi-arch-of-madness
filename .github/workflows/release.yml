@@ -78,6 +78,8 @@ jobs:
           file: Containerfile
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: true
+          sbom: true
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
 
       - name: Export Digest
