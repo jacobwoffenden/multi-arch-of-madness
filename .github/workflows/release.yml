@@ -78,6 +78,8 @@ jobs:
           file: Containerfile
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: true
+          sbom: true
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
 
       - name: Export Digest
@@ -151,8 +153,13 @@ jobs:
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}")
           # shellcheck disable=SC2046,SC2086
           docker buildx imagetools create ${tags} $(printf "${IMAGE_NAME}@sha256:%s " $(ls /tmp/digests/))
+
+          # Get the digest of the manifest we just created
+          digest=$(docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION}" --format "{{json .Manifest}}" | jq -r '.digest')
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          VERSION: ${{ steps.meta.outputs.version }}
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
 
       - name: Inspect Image
@@ -162,3 +169,31 @@ jobs:
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           VERSION: ${{ steps.meta.outputs.version }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+
+      - name: Sign Image with Cosign
+        shell: bash
+        run: |
+          # Sign the multi-arch manifest recursively
+          # This signs both the top-level manifest AND each platform-specific manifest
+          # Important for tools that pull specific architectures (e.g., internal registries)
+          cosign sign --yes --recursive "${IMAGE_NAME}@${IMAGE_DIGEST}"
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_DIGEST: ${{ steps.create_manifest.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+
+      - name: Verify Signature
+        shell: bash
+        run: |
+          cosign verify \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${IMAGE_NAME}:${VERSION}" | jq
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}

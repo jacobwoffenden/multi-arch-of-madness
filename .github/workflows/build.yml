@@ -55,3 +55,12 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         run: |
           container-structure-test test --platform "linux/${PLATFORM}" --config "${CONFIGURATION_FILE}" --image "${GITHUB_SHA}-${PLATFORM}"
+
+      - name: Scan
+        id: scan
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          image-ref: ${{ github.sha }}-${{ matrix.platform }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1

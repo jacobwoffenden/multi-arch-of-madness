@@ -12,6 +12,7 @@ This repository demonstrates how to build, test, and release multi-architecture 
 - ✅ Matrix-based parallel builds using native runners
 - ✅ Multi-arch manifest creation and publishing
 - ✅ Native Docker/BuildKit attestations (provenance + SBOM)
+- ✅ Keyless image signing with Sigstore cosign
 - ✅ Automated releases triggered by Git tags
 
 ## 🏗️ Architecture
@@ -115,15 +116,305 @@ This workflow includes **native Docker/BuildKit attestations** automatically:
 
 Each architecture gets its own attestation, stored as "unknown" platform entries in the manifest. This ensures accurate SBOM data for each architecture's specific packages.
 
-### Verifying Attestations
+### Viewing Attestations
 
 ```bash
 # View all platforms and attestations
-docker buildx imagetools inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
+docker buildx imagetools inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:1.1.0-rc3
 
 # View raw manifest (includes attestations)
-docker buildx imagetools inspect --raw ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18 | jq
+docker buildx imagetools inspect --raw ghcr.io/jacobwoffenden/multi-arch-of-madness:1.1.0-rc3 | jq
 ```
+
+### Downloading and Inspecting Attestations
+
+Each image includes two types of attestations that are automatically generated and signed:
+
+#### Finding Attestation Digests
+
+To get the digests for SBOM and provenance attestations:
+
+```bash
+# List all attestation manifests
+docker buildx imagetools inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:1.1.0-rc3 --raw \
+  | jq -r '.manifests[] | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest") | .digest'
+
+# View attestation types in a specific attestation manifest
+docker run --rm gcr.io/go-containerregistry/crane:latest \
+  manifest ghcr.io/jacobwoffenden/multi-arch-of-madness@sha256:ATTESTATION_MANIFEST_DIGEST \
+  | jq -r '.layers[] | "\(.annotations["in-toto.io/predicate-type"]): \(.digest)"'
+```
+
+#### SBOM (Software Bill of Materials)
+
+The SBOM uses **SPDX 2.3** format and contains a complete inventory of all packages:
+
+```bash
+# Download SBOM using Docker (requires crane)
+docker run --rm gcr.io/go-containerregistry/crane:latest \
+  blob ghcr.io/jacobwoffenden/multi-arch-of-madness@sha256:SBOM_DIGEST | jq
+
+# View package summary
+docker run --rm gcr.io/go-containerregistry/crane:latest \
+  blob ghcr.io/jacobwoffenden/multi-arch-of-madness@sha256:SBOM_DIGEST \
+  | jq -r '.predicate.packages[] | "• \(.name) \(.versionInfo)"'
+
+# Search for a specific package (e.g., openssl)
+docker run --rm gcr.io/go-containerregistry/crane:latest \
+  blob ghcr.io/jacobwoffenden/multi-arch-of-madness@sha256:SBOM_DIGEST \
+  | jq '.predicate.packages[] | select(.name == "openssl")'
+```
+
+**SBOM includes for each package:**
+
+- Package name and version
+- SPDX identifier
+- CPE (Common Platform Enumeration) for vulnerability scanning
+- PURL (Package URL) for package management
+- License information
+- Copyright details
+
+**Example package entry:**
+
+```json
+{
+  "name": "openssl",
+  "versionInfo": "3.0.13-0ubuntu3.6",
+  "SPDXID": "SPDXRef-Package-deb-openssl-72ce342c53b6cc41",
+  "externalRefs": [
+    {
+      "referenceCategory": "SECURITY",
+      "referenceType": "cpe23Type",
+      "referenceLocator": "cpe:2.3:a:openssl:openssl:3.0.13-0ubuntu3.6:*:*:*:*:*:*:*"
+    },
+    {
+      "referenceCategory": "PACKAGE-MANAGER",
+      "referenceType": "purl",
+      "referenceLocator": "pkg:deb/ubuntu/openssl@3.0.13-0ubuntu3.6?arch=amd64&distro=ubuntu-24.04"
+    }
+  ]
+}
+```
+
+#### Provenance (Build Attestation)
+
+The provenance uses **SLSA v0.2** format and proves how the image was built:
+
+```bash
+# Download provenance
+docker run --rm gcr.io/go-containerregistry/crane:latest \
+  blob ghcr.io/jacobwoffenden/multi-arch-of-madness@sha256:PROVENANCE_DIGEST | jq
+
+# View build details
+docker run --rm gcr.io/go-containerregistry/crane:latest \
+  blob ghcr.io/jacobwoffenden/multi-arch-of-madness@sha256:PROVENANCE_DIGEST \
+  | jq '.predicate | {builder, buildType, buildStarted: .metadata.buildStartedOn, buildFinished: .metadata.buildFinishedOn}'
+```
+
+**Provenance includes:**
+
+- **Builder ID**: Exact GitHub Actions workflow run URL
+- **Build Type**: Moby BuildKit v1
+- **Build Timestamps**: Start and finish times
+- **Materials**: Base images and build tools used (with digests)
+
+**Example provenance:**
+
+```json
+{
+  "builder": {
+    "id": "https://github.com/jacobwoffenden/multi-arch-of-madness/actions/runs/20558044805/attempts/1"
+  },
+  "buildType": "https://mobyproject.org/buildkit@v1",
+  "metadata": {
+    "buildStartedOn": "2025-12-28T18:47:39.863895944Z",
+    "buildFinishedOn": "2025-12-28T18:47:49.007939784Z"
+  },
+  "materials": [
+    {
+      "uri": "pkg:docker/ubuntu@24.04",
+      "digest": {
+        "sha256": "c35e29c9450151419d9448b0fd75374fec4fff364a27f176fb458d472dfc9e54"
+      }
+    }
+  ]
+}
+```
+
+#### Using Attestations with Security Tools
+
+**Grype (Vulnerability Scanning):**
+
+```bash
+grype ghcr.io/jacobwoffenden/multi-arch-of-madness:1.1.0-rc3 --use-embedded-attestation
+```
+
+**Syft (SBOM Analysis):**
+
+```bash
+syft ghcr.io/jacobwoffenden/multi-arch-of-madness:1.1.0-rc3 --source-version attestation
+```
+
+**Docker Scout:**
+
+```bash
+docker scout cves ghcr.io/jacobwoffenden/multi-arch-of-madness:1.1.0-rc3
+```
+
+All attestations are cryptographically signed with cosign and can be verified using the same process as image signatures.
+
+## 🔏 Image Signing with Cosign
+
+All released container images are signed using [Sigstore cosign](https://docs.sigstore.dev/cosign/overview/) with **keyless signing**. This provides cryptographic verification that images were built by this repository's GitHub Actions workflow.
+
+### What's Signed
+
+- **Multi-architecture manifest** (the top-level "manifest of manifests")
+- **Individual platform manifests** (amd64 and arm64 specific manifests)
+- Signed recursively using `--recursive` flag for compatibility with tools that pull specific architectures
+- Signed using GitHub's OIDC identity (no key management required)
+- Signatures stored in the public [Sigstore Rekor transparency log](https://rekor.sigstore.dev/)
+
+### Why This Matters
+
+Image signing provides:
+
+- **Authenticity**: Cryptographically proves the image came from this repository
+- **Integrity**: Ensures the image hasn't been tampered with
+- **Transparency**: All signatures are publicly auditable via Rekor
+- **Trust**: Verifies the exact GitHub Actions workflow that built the image
+- **Architecture-specific verification**: Recursive signing ensures individual architecture manifests can be verified independently (critical for internal registries that pull specific architectures)
+
+### Verifying Signatures
+
+#### Quick Verification
+
+Use the provided verification script:
+
+```bash
+# Clone the repository
+git clone https://github.com/jacobwoffenden/multi-arch-of-madness.git
+cd multi-arch-of-madness
+
+# Verify a specific tag
+./verify-signature.sh 0.0.1-rc18
+
+# Verify latest tag
+./verify-signature.sh latest
+```
+
+#### Manual Verification
+
+Install cosign:
+
+```bash
+# macOS
+brew install sigstore/tap/cosign
+
+# Linux (Debian/Ubuntu)
+wget "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
+sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+sudo chmod +x /usr/local/bin/cosign
+
+# Windows
+# See: https://docs.sigstore.dev/cosign/system_config/installation/
+```
+
+Verify the signature:
+
+```bash
+# Verify the multi-arch manifest (recommended)
+cosign verify \
+  --certificate-identity-regexp "^https://github.com/jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@refs/tags/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18 | jq
+
+# Verify a specific architecture by digest (also works thanks to --recursive signing)
+cosign verify \
+  --certificate-identity-regexp "^https://github.com/jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@refs/tags/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/jacobwoffenden/multi-arch-of-madness@sha256:DIGEST_OF_SPECIFIC_ARCH | jq
+```
+
+**Expected output:**
+
+```json
+[
+  {
+    "critical": {
+      "identity": {
+        "docker-reference": "ghcr.io/jacobwoffenden/multi-arch-of-madness"
+      },
+      "image": {
+        "docker-manifest-digest": "sha256:..."
+      },
+      "type": "cosign container image signature"
+    },
+    "optional": {
+      "githubWorkflowRef": "refs/tags/0.0.1-rc18",
+      "githubWorkflowRepository": "jacobwoffenden/multi-arch-of-madness",
+      ...
+    }
+  }
+]
+```
+
+### Integration with Container Runtimes
+
+You can enforce signature verification at runtime using policy engines:
+
+**Kubernetes with Kyverno:**
+
+```yaml
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-multi-arch-images
+spec:
+  validationFailureAction: enforce
+  rules:
+    - name: verify-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/jacobwoffenden/multi-arch-of-madness:*"
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@refs/tags/*"
+                    issuer: "https://token.actions.githubusercontent.com"
+```
+
+**Docker with Cosign:**
+
+```bash
+# Set environment variable to enforce verification
+export COSIGN_REPOSITORY=ghcr.io/jacobwoffenden/multi-arch-of-madness
+
+# Docker will verify before running
+cosign verify --certificate-identity-regexp "^https://github.com/jacobwoffenden/multi-arch-of-madness/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/jacobwoffenden/multi-arch-of-madness:latest && \
+docker run --rm ghcr.io/jacobwoffenden/multi-arch-of-madness:latest
+```
+
+### Important Notes
+
+**Why `--recursive` signing?**
+
+When using `--recursive`, cosign signs both the multi-arch manifest AND each individual platform manifest. This is critical for:
+
+- **Internal registries/mirrors** that pull specific architectures (not the full multi-arch manifest)
+- **CI/CD pipelines** that verify specific platform images
+- **Security scanners** that need to verify per-architecture images
+
+Without `--recursive`, verification would fail when checking platform-specific manifests by digest, even though the top-level manifest is signed. This is a common pitfall in enterprise environments where "MirrorBot" systems pull only the architectures they need.
+
+**Reference:** [Signing and verifying multi-architecture containers with Sigstore](https://some-natalie.dev/blog/sigstore-multiarch/) by Natalie Somersall
 
 ## 🧪 Testing
 
@@ -159,6 +450,8 @@ docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
 - Pins all actions to specific commit SHAs
 - Minimal permissions (principle of least privilege)
 - OIDC token authentication for registry login
+- Keyless image signing with cosign (Sigstore)
+- Public transparency log via Rekor
 
 ### Optimisation
 
