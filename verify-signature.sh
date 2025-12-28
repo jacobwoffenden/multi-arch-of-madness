@@ -39,7 +39,7 @@ if cosign verify \
     cosign verify \
         --certificate-identity-regexp "^https://github.com/${REPO}/.github/workflows/release.yml@refs/tags/.*" \
         --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-        "${IMAGE_NAME}" | jq -r '.[] | "  Signed at: \(.optional.Bundle.Payload.integratedTime | tonumber | strftime("%Y-%m-%d %H:%M:%S UTC"))\n  Git ref: \(.optional.githubWorkflowRef)"'
+        "${IMAGE_NAME}" | jq -r '.[] | "  Digest: \(.critical.image."docker-manifest-digest")"'
     exit 0
 else
     echo "❌ Signature verification FAILED"
