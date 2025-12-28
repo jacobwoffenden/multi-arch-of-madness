@@ -166,6 +166,7 @@ docker run --rm gcr.io/go-containerregistry/crane:latest \
 ```
 
 **SBOM includes for each package:**
+
 - Package name and version
 - SPDX identifier
 - CPE (Common Platform Enumeration) for vulnerability scanning
@@ -174,6 +175,7 @@ docker run --rm gcr.io/go-containerregistry/crane:latest \
 - Copyright details
 
 **Example package entry:**
+
 ```json
 {
   "name": "openssl",
@@ -210,12 +212,14 @@ docker run --rm gcr.io/go-containerregistry/crane:latest \
 ```
 
 **Provenance includes:**
+
 - **Builder ID**: Exact GitHub Actions workflow run URL
 - **Build Type**: Moby BuildKit v1
 - **Build Timestamps**: Start and finish times
 - **Materials**: Base images and build tools used (with digests)
 
 **Example provenance:**
+
 ```json
 {
   "builder": {
@@ -240,16 +244,19 @@ docker run --rm gcr.io/go-containerregistry/crane:latest \
 #### Using Attestations with Security Tools
 
 **Grype (Vulnerability Scanning):**
+
 ```bash
 grype ghcr.io/jacobwoffenden/multi-arch-of-madness:1.1.0-rc3 --use-embedded-attestation
 ```
 
 **Syft (SBOM Analysis):**
+
 ```bash
 syft ghcr.io/jacobwoffenden/multi-arch-of-madness:1.1.0-rc3 --source-version attestation
 ```
 
 **Docker Scout:**
+
 ```bash
 docker scout cves ghcr.io/jacobwoffenden/multi-arch-of-madness:1.1.0-rc3
 ```
@@ -271,6 +278,7 @@ All released container images are signed using [Sigstore cosign](https://docs.si
 ### Why This Matters
 
 Image signing provides:
+
 - **Authenticity**: Cryptographically proves the image came from this repository
 - **Integrity**: Ensures the image hasn't been tampered with
 - **Transparency**: All signatures are publicly auditable via Rekor
@@ -329,6 +337,7 @@ cosign verify \
 ```
 
 **Expected output:**
+
 ```json
 [
   {
@@ -355,6 +364,7 @@ cosign verify \
 You can enforce signature verification at runtime using policy engines:
 
 **Kubernetes with Kyverno:**
+
 ```yaml
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -380,6 +390,7 @@ spec:
 ```
 
 **Docker with Cosign:**
+
 ```bash
 # Set environment variable to enforce verification
 export COSIGN_REPOSITORY=ghcr.io/jacobwoffenden/multi-arch-of-madness
@@ -396,6 +407,7 @@ docker run --rm ghcr.io/jacobwoffenden/multi-arch-of-madness:latest
 **Why `--recursive` signing?**
 
 When using `--recursive`, cosign signs both the multi-arch manifest AND each individual platform manifest. This is critical for:
+
 - **Internal registries/mirrors** that pull specific architectures (not the full multi-arch manifest)
 - **CI/CD pipelines** that verify specific platform images
 - **Security scanners** that need to verify per-architecture images
