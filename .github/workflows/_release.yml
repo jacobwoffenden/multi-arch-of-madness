@@ -16,4 +16,4 @@ jobs:
       id-token: write
       packages: write
     with:
-      enable-arm64: false
+      enable-arm64: true
