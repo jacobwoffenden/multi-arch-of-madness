@@ -1,0 +1,19 @@
+---
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions: {}
+
+jobs:
+  build:
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      enable-arm64: false

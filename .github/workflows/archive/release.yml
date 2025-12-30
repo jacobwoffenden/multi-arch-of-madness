@@ -5,52 +5,25 @@ on:
   push:
     tags:
       - "*"
-  workflow_call:
-    inputs:
-      enable-arm64:
-        description: "Build ARM64 image in addition to AMD64"
-        type: boolean
-        default: true
-      image-name:
-        description: "Container image name (defaults to ghcr.io/<repo>)"
-        type: string
-        required: false
 
 permissions: {}
 
 env:
-  IMAGE_NAME: ${{ inputs.image-name || format('ghcr.io/{0}', github.repository) }}
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
-  setup-matrix:
-    name: Setup Build Matrix
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      multi-arch: ${{ steps.set-matrix.outputs.multi-arch }}
-    steps:
-      - name: Generate Matrix
-        id: set-matrix
-        shell: bash
-        run: |
-          if [[ "${{ inputs.enable-arm64 }}" == "true" ]]; then
-            echo 'matrix={"platform":["amd64","arm64"]}' >> "${GITHUB_OUTPUT}"
-            echo "multi-arch=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo 'matrix={"platform":["amd64"]}' >> "${GITHUB_OUTPUT}"
-            echo "multi-arch=false" >> "${GITHUB_OUTPUT}"
-          fi
-
   build-and-push:
     name: Build and Push
-    needs: setup-matrix
     permissions:
       contents: read
       id-token: write
       packages: write
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
+      matrix:
+        platform:
+          - amd64
+          - arm64
     runs-on: ${{ matrix.platform == 'amd64' && 'ubuntu-latest' || matrix.platform == 'arm64' && 'ubuntu-24.04-arm' }}
     steps:
       - name: Harden Runner
@@ -127,9 +100,9 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  finalise:
-    name: Create Manifest and Sign
-    needs: [setup-matrix, build-and-push]
+  merge:
+    name: Create Multi-Arch Manifest
+    needs: build-and-push
     permissions:
       contents: read
       id-token: write
@@ -172,8 +145,9 @@ jobs:
       - name: Create and Push Manifest
         id: create_manifest
         shell: bash
-        # Works for both single-arch and multi-arch builds
-        # The imagetools create command handles one or multiple digests identically
+        # We intentionally need word splitting here to expand tags and digests into separate arguments.
+        # The shellcheck warnings are suppressed because quoting would break the command by treating
+        # multiple tags/digests as single strings instead of separate CLI arguments.
         run: |
           # shellcheck disable=SC2046,SC2086
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}")
@@ -202,12 +176,14 @@ jobs:
       - name: Sign Image with Cosign
         shell: bash
         run: |
-          # Sign recursively for multi-arch (signs all platform manifests)
-          # For single-arch, --recursive has no effect but doesn't hurt
+          # Sign the multi-arch manifest recursively
+          # This signs both the top-level manifest AND each platform-specific manifest
+          # Important for tools that pull specific architectures (e.g., internal registries)
           cosign sign --yes --recursive "${IMAGE_NAME}@${IMAGE_DIGEST}"
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           IMAGE_DIGEST: ${{ steps.create_manifest.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
 
       - name: Verify Signature
         shell: bash
