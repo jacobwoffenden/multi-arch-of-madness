@@ -6,3 +6,13 @@ commandTests:
     command: "uname"
     args: ["--machine"]
     expectedOutput: ["aarch64"]
+
+  - name: "uv version"
+    command: "uv"
+    args: ["--version"]
+    expectedOutput: ["uv 0.9.21"]
+
+  - name: "uvx version"
+    command: "uvx"
+    args: ["--version"]
+    expectedOutput: ["uv 0.9.21"]
