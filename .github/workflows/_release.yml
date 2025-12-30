@@ -9,7 +9,8 @@ on:
 permissions: {}
 
 jobs:
-  build:
+  release:
+    name: Release
     uses: ./.github/workflows/release.yml
     permissions:
       contents: read

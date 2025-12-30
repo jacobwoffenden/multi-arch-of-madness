@@ -1,10 +1,6 @@
 ---
-name: Release
-
+# Trigger this workflow when called from another workflow
 on:
-  push:
-    tags:
-      - "*"
   workflow_call:
     inputs:
       enable-arm64:
@@ -16,12 +12,17 @@ on:
         type: string
         required: false
 
+# Start with minimal permissions and grant additional permissions per-job as needed
 permissions: {}
 
+# Set the target container registry and image name
+# Uses custom image-name input if provided, otherwise defaults to GitHub Container Registry
 env:
   IMAGE_NAME: ${{ inputs.image-name || format('ghcr.io/{0}', github.repository) }}
 
 jobs:
+  # First job: Determine which platforms to build for
+  # This creates a dynamic build matrix based on the enable-arm64 input
   setup-matrix:
     name: Setup Build Matrix
     runs-on: ubuntu-latest
@@ -29,6 +30,10 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       multi-arch: ${{ steps.set-matrix.outputs.multi-arch }}
     steps:
+      # Generate the build matrix dynamically
+      # If ARM64 is enabled: builds for both amd64 and arm64
+      # If ARM64 is disabled: builds only for amd64
+      # The matrix output will be consumed by the build-and-push job
       - name: Generate Matrix
         id: set-matrix
         shell: bash
@@ -41,41 +46,62 @@ jobs:
             echo "multi-arch=false" >> "${GITHUB_OUTPUT}"
           fi
 
+  # Second job: Build container images for each platform
+  # Runs in parallel for each platform defined in the matrix (amd64 and/or arm64)
   build-and-push:
     name: Build and Push
     needs: setup-matrix
     permissions:
-      contents: read
-      id-token: write
-      packages: write
+      contents: read      # Read repository contents
+      id-token: write     # Generate OIDC tokens for signing
+      packages: write     # Push to GitHub Container Registry
     strategy:
-      fail-fast: false
+      fail-fast: false  # Continue building other platforms even if one fails
       matrix: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
+    # Use native runners for each architecture to improve build performance
+    # amd64: standard GitHub-hosted runner
+    # arm64: GitHub's ARM-hosted runner (ubuntu-24.04-arm)
     runs-on: ${{ matrix.platform == 'amd64' && 'ubuntu-latest' || matrix.platform == 'arm64' && 'ubuntu-24.04-arm' }}
     steps:
+      # Security: Monitor and audit network egress during the workflow
+      # Only runs on public repositories to detect suspicious network activity
+      # Helps identify potential supply chain attacks or credential exfiltration
       - name: Harden Runner
         if: github.event.repository.private == false
         id: harden_runner
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
         with:
-          egress-policy: audit
+          egress-policy: audit  # Log all network calls without blocking
 
+      # Check out the repository code at the tag/ref that triggered this workflow
+      # persist-credentials: false prevents the GITHUB_TOKEN from being persisted in git config
+      # This is a security best practice to prevent token exposure in subsequent steps
       - name: Checkout
         id: checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           persist-credentials: false
 
+      # Generate standardized Docker image tags and labels from git metadata
+      # Creates semantic versioning tags from git tags (e.g., v1.2.3 -> 1.2.3, 1.2, 1)
+      # Also generates OCI-compliant labels for image metadata
       - name: Docker Metadata
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.IMAGE_NAME }}
+          # Generate tags:
+          # - Full semantic version (e.g., 1.2.3)
+          # - Major.minor version (e.g., 1.2)
+          # - Major version only (e.g., 1)
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
 
+      # Create a named Docker context for this platform build
+      # Each platform (amd64/arm64) gets its own isolated build context
+      # This ensures builds don't interfere with each other when running in parallel
       - name: Create Docker Buildx Context
         id: docker_buildx_context
         shell: bash
@@ -84,11 +110,14 @@ jobs:
         run: |
           docker context create "${CONTEXT}"
 
+      # Set up Docker Buildx for building container images
+      # Buildx is Docker's enhanced build system supporting multi-platform builds
+      # We configure it to use the platform-specific context and restrict it to that platform
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         with:
-          endpoint: ${{ matrix.platform }}
-          platforms: linux/${{ matrix.platform }}
+          endpoint: ${{ matrix.platform }}          # Use the context we just created
+          platforms: linux/${{ matrix.platform }}   # Explicitly set target platform
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
@@ -97,58 +126,84 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Build the container image for this specific platform and push by digest
+      # Key features:
+      # - Builds from Containerfile (Dockerfile)
+      # - Generates provenance attestation (build metadata for supply chain security)
+      # - Generates SBOM (Software Bill of Materials for vulnerability tracking)
+      # - Pushes by digest (not by tag) to allow combining into multi-arch manifest later
+      # - Uses OCI media types for better compatibility
       - name: Build and Publish
         id: build_publish
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
-          context: .
-          file: Containerfile
-          labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ steps.meta.outputs.annotations }}
-          provenance: true
-          sbom: true
+          context: .                                         # Build context is repository root
+          file: Containerfile                                # Containerfile to build
+          labels: ${{ steps.meta.outputs.labels }}           # OCI labels from metadata action
+          annotations: ${{ steps.meta.outputs.annotations }} # OCI annotations
+          provenance: true                                   # Generate build provenance
+          sbom: true                                         # Generate Software Bill of Materials
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
 
+      # Save the image digest to a file for later use
+      # Each platform's digest is stored as a separate file
+      # The filename is the digest (without "sha256:" prefix)
+      # These digests will be combined in the finalise job to create a multi-arch manifest
       - name: Export Digest
         id: export_digest
         shell: bash
         run: |
           mkdir -p /tmp/digests
           digest="${BUILD_DIGEST}"
-          touch "/tmp/digests/${digest#sha256:}"
+          touch "/tmp/digests/${digest#sha256:}"  # Create file with digest as filename
         env:
           BUILD_DIGEST: ${{ steps.build_publish.outputs.digest }}
 
+      # Upload the digest as a workflow artifact
+      # Each platform uploads its digest separately with a unique name
+      # The finalise job will download all digests and merge them
+      # Artifacts are kept for only 1 day as they're only needed for the workflow
       - name: Upload Digest
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: digests-${{ matrix.platform }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
+          name: digests-${{ matrix.platform }}  # Unique name per platform
+          path: /tmp/digests/*                  # Upload all digest files
+          if-no-files-found: error              # Fail if no digests were created
+          retention-days: 1                     # Clean up after 1 day
 
+  # Third job: Combine platform-specific images into a multi-arch manifest and sign
+  # This job runs after all platform builds are complete
+  # Creates a single manifest list that points to all platform-specific images
   finalise:
-    name: Create Manifest and Sign
+    name: Finalise Manifest and Sign
     needs: [setup-matrix, build-and-push]
     permissions:
-      contents: read
-      id-token: write
-      packages: write
+      contents: read      # Read repository contents
+      id-token: write     # Generate OIDC tokens for keyless signing with Cosign
+      packages: write     # Push manifest to GitHub Container Registry
     runs-on: ubuntu-latest
     steps:
+      # Security: Monitor and audit network egress during manifest creation and signing
+      # Same security monitoring as in the build job
       - name: Harden Runner
         if: github.event.repository.private == false
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
         with:
           egress-policy: audit
 
+      # Download all digest artifacts from the build-and-push jobs
+      # Pattern matches all artifacts named "digests-*" (digests-amd64, digests-arm64, etc.)
+      # merge-multiple: true combines all matching artifacts into a single directory
       - name: Download Digests
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          path: /tmp/digests
-          pattern: digests-*
-          merge-multiple: true
+          path: /tmp/digests          # Download to this directory
+          pattern: digests-*          # Match all platform digest artifacts
+          merge-multiple: true        # Merge into single directory
 
+      # Re-generate Docker metadata for tagging the final manifest
+      # Must be done again in this job since job outputs aren't shared between jobs
+      # Generates the same semantic versioning tags as before
       - name: Docker Metadata
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
@@ -159,9 +214,13 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
 
+      # Set up Docker Buildx for creating the manifest list
+      # Buildx's imagetools command will combine platform-specific images into one manifest
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
+      # Authenticate with GitHub Container Registry to push the manifest
+      # Same authentication as build job, required to push the manifest list
       - name: Login to GitHub Container Registry
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
@@ -169,18 +228,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Create a multi-arch manifest list and push it with all version tags
+      # This combines all platform-specific images into a single pullable reference
+      # When users pull the image, Docker automatically selects the right platform
       - name: Create and Push Manifest
         id: create_manifest
         shell: bash
         # Works for both single-arch and multi-arch builds
         # The imagetools create command handles one or multiple digests identically
         run: |
+          # Extract all tags from metadata JSON and format as CLI arguments
           # shellcheck disable=SC2046,SC2086
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}")
+          
+          # Create manifest list that references all platform-specific images by digest
+          # Each file in /tmp/digests/ is a platform's digest
           # shellcheck disable=SC2046,SC2086
           docker buildx imagetools create ${tags} $(printf "${IMAGE_NAME}@sha256:%s " $(ls /tmp/digests/))
 
-          # Get the digest of the manifest we just created
+          # Retrieve and save the digest of the manifest we just created
+          # This digest will be used for signing and verification
           digest=$(docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION}" --format "{{json .Manifest}}" | jq -r '.digest')
           echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
         env:
@@ -188,6 +255,9 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
 
+      # Display detailed information about the manifest list
+      # Shows all platforms included, layers, and metadata
+      # Useful for debugging and verification in workflow logs
       - name: Inspect Image
         shell: bash
         run: |
@@ -196,9 +266,17 @@ jobs:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           VERSION: ${{ steps.meta.outputs.version }}
 
+      # Install Cosign for keyless container image signing
+      # Cosign uses Sigstore for transparent, verifiable signatures
+      # Keyless signing uses OIDC tokens instead of managing private keys
       - name: Install Cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
 
+      # Sign the container image using keyless signing with Sigstore
+      # --yes: Skip confirmation prompt (non-interactive)
+      # --recursive: Signs all platform-specific images within the manifest list
+      # The signature is stored in the container registry alongside the image
+      # Uses GitHub Actions OIDC token for identity verification (no keys to manage)
       - name: Sign Image with Cosign
         shell: bash
         run: |
@@ -209,6 +287,13 @@ jobs:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           IMAGE_DIGEST: ${{ steps.create_manifest.outputs.digest }}
 
+      # Verify the signature we just created
+      # This confirms the signing worked and demonstrates how to verify signatures
+      # Verification checks:
+      # 1. Signature is valid and matches the image
+      # 2. Certificate identity matches this workflow in this repository
+      # 3. OIDC issuer is GitHub Actions
+      # Output is pretty-printed JSON showing signature details
       - name: Verify Signature
         shell: bash
         run: |
