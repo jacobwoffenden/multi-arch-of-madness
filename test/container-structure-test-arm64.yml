@@ -15,4 +15,4 @@ commandTests:
   - name: "uvx version"
     command: "uvx"
     args: ["--version"]
-    expectedOutput: ["uv 0.9.21"]
+    expectedOutput: ["uvx 0.9.21"]
