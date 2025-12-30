@@ -215,9 +215,9 @@ jobs:
           cosign verify \
             --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${IMAGE_NAME}:${VERSION}" | jq
+            "${IMAGE_NAME}@${IMAGE_DIGEST}" | jq
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.create_manifest.outputs.digest }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF: ${{ github.ref }}
