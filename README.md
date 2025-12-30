@@ -113,7 +113,7 @@ Runs in parallel for each enabled architecture:
 matrix:
   platform:
     - amd64
-    - arm64  # (if enabled)
+    - arm64 # (if enabled)
 ```
 
 **Steps:**
@@ -527,10 +527,10 @@ docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
 
 ### Inputs
 
-| Input | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `enable-arm64` | `boolean` | No | `true` | Build ARM64 image in addition to AMD64 |
-| `image-name` | `string` | No | `ghcr.io/<repo>` | Container image name (overrides default) |
+| Input          | Type      | Required | Default          | Description                              |
+| -------------- | --------- | -------- | ---------------- | ---------------------------------------- |
+| `enable-arm64` | `boolean` | No       | `true`           | Build ARM64 image in addition to AMD64   |
+| `image-name`   | `string`  | No       | `ghcr.io/<repo>` | Container image name (overrides default) |
 
 ### Required Permissions
 
@@ -538,19 +538,21 @@ When calling the reusable workflow, you must grant these permissions:
 
 ```yaml
 permissions:
-  contents: read        # Read repository contents
-  id-token: write       # Generate OIDC tokens for signing
-  packages: write       # Push to GitHub Container Registry
+  contents: read # Read repository contents
+  id-token: write # Generate OIDC tokens for signing
+  packages: write # Push to GitHub Container Registry
 ```
 
 ### Use Cases
 
 **Default (Multi-arch):**
+
 ```yaml
 uses: jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@v2
 ```
 
 **AMD64 only:**
+
 ```yaml
 uses: jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@v2
 with:
@@ -558,6 +560,7 @@ with:
 ```
 
 **Custom image name:**
+
 ```yaml
 uses: jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@v2
 with:
