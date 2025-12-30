@@ -14,6 +14,7 @@ This repository demonstrates how to build, test, and release multi-architecture 
 - ✅ Native Docker/BuildKit attestations (provenance + SBOM)
 - ✅ Keyless image signing with Sigstore cosign
 - ✅ Automated releases triggered by Git tags
+- ✅ **Reusable workflow** - use in other repositories with optional ARM64 builds
 
 ## 🏗️ Architecture
 
@@ -42,7 +43,9 @@ Users can then pull the image and Docker automatically selects the correct archi
 
 ## 📦 Release Workflow
 
-### Trigger
+The workflow can be used in two ways:
+
+### 1. Direct Use (This Repository)
 
 Releases are automatically triggered when you push a tag:
 
@@ -57,17 +60,60 @@ git push origin 0.0.1-rc1
 - **Stable releases** (e.g., `1.0.0`) automatically get the `latest` tag in addition to version tags
 - The `docker/metadata-action` automatically detects SemVer prerelease identifiers and only applies `latest` to stable releases
 
+### 2. Reusable Workflow (Other Repositories)
+
+Starting with v2.0.0, the workflow can be called from other repositories:
+
+```yaml
+# .github/workflows/release.yml in your repository
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    uses: jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@v2
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    # Optional: customize behavior
+    # with:
+    #   enable-arm64: false  # Set to false for AMD64-only builds (default: true)
+    #   image-name: ghcr.io/myorg/myimage  # Override image name (default: ghcr.io/<repo>)
+```
+
+**Reusable Workflow Features:**
+
+- **Optional ARM64**: Toggle ARM64 builds with `enable-arm64` input (defaults to `true`)
+- **Customisable image name**: Override with `image-name` input (defaults to caller's repository)
+- **Dynamic matrix**: Automatically adjusts build matrix based on enabled architectures
+- **Unified finalisation**: Single job handles both single-arch and multi-arch builds efficiently
+
 ### Jobs
 
-#### 1. Build and Push (Matrix)
+#### 1. Setup Build Matrix
 
-Runs in parallel for each architecture:
+Generates the build matrix dynamically based on inputs (for reusable workflow) or defaults to both architectures:
+
+**Steps:**
+
+- Determines which platforms to build (amd64 always, arm64 optional)
+- Outputs matrix configuration for parallel builds
+- Sets `multi-arch` flag for downstream jobs
+
+#### 2. Build and Push (Matrix)
+
+Runs in parallel for each enabled architecture:
 
 ```yaml
 matrix:
   platform:
     - amd64
-    - arm64
+    - arm64 # (if enabled)
 ```
 
 **Steps:**
@@ -85,17 +131,19 @@ matrix:
 - Enables OCI media types for attestations
 - Runs on native architecture runners for optimal performance
 
-#### 2. Create Multi-Arch Manifest
+#### 3. Finalise (Create Manifest and Sign)
 
-Runs after both platform builds complete:
+Runs after all platform builds complete. Handles both single-arch and multi-arch builds:
 
 **Steps:**
 
 - Download all platform digests
 - Generate image tags from Git tag
-- Create multi-arch manifest using `docker buildx imagetools create`
+- Create manifest using `docker buildx imagetools create` (works for one or multiple digests)
 - Push manifest with proper tags
-- Inspect final multi-arch image
+- Inspect final image
+- Sign image with Cosign (recursively for multi-arch)
+- Verify signature using digest reference
 
 ## 🔐 Attestations
 
@@ -470,8 +518,54 @@ docker manifest inspect ghcr.io/jacobwoffenden/multi-arch-of-madness:0.0.1-rc18
 
 ## 🔄 Workflow Files
 
-- [`.github/workflows/release.yml`](.github/workflows/release.yml) - Multi-arch release workflow
+- [`.github/workflows/release.yml`](.github/workflows/release.yml) - Multi-arch release workflow (reusable)
+- [`.github/workflows/_release.yml`](.github/workflows/_release.yml) - Example usage of reusable workflow
 - [`.github/workflows/build.yml`](.github/workflows/build.yml) - PR build and test workflow
+- [`.github/workflows/archive/release.yml`](.github/workflows/archive/release.yml) - Original v1.x workflow (archived)
+
+## 🔧 Reusable Workflow API
+
+### Inputs
+
+| Input          | Type      | Required | Default          | Description                              |
+| -------------- | --------- | -------- | ---------------- | ---------------------------------------- |
+| `enable-arm64` | `boolean` | No       | `true`           | Build ARM64 image in addition to AMD64   |
+| `image-name`   | `string`  | No       | `ghcr.io/<repo>` | Container image name (overrides default) |
+
+### Required Permissions
+
+When calling the reusable workflow, you must grant these permissions:
+
+```yaml
+permissions:
+  contents: read # Read repository contents
+  id-token: write # Generate OIDC tokens for signing
+  packages: write # Push to GitHub Container Registry
+```
+
+### Use Cases
+
+**Default (Multi-arch):**
+
+```yaml
+uses: jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@v2
+```
+
+**AMD64 only:**
+
+```yaml
+uses: jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@v2
+with:
+  enable-arm64: false
+```
+
+**Custom image name:**
+
+```yaml
+uses: jacobwoffenden/multi-arch-of-madness/.github/workflows/release.yml@v2
+with:
+  image-name: ghcr.io/myorg/custom-image
+```
 
 ## 📚 Additional Resources
 
